@@ -147,7 +147,7 @@ class AIDSim:
         
         return{
             "original_seq": original_seq,
-            "hidden_states": hidden_states.tolist(),
+            "hidden_states": hidden_states,
             "mutated_seq":mutated_seq
             
         }
@@ -182,6 +182,7 @@ def main():
             print(f"Generated {i+1}/{NUM_SEQUENCES} sequences")
 
     df = pd.DataFrame(dataset)
+    df["hidden_states"] = df["hidden_states"].apply(lambda x: "".join(map(str, x)))
     df.to_csv(OUTPUT_FILENAME, index = False)
     
         
