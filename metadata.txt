@@ -1,0 +1,11 @@
+(base) dani@h115 Random-Processes-Project % python generate_synthetic_data_2.py
+--- Generating Synthetic Data (Option 1: fire-as-emission) ---
+Sequences: 100 | Length: 1000
+
+--- Generation Complete ---
+Saved to: /Users/dani/Library/CloudStorage/OneDrive-TUM/Documents/Uni/TUM_Master/TUMExchange/Random_Processes/Project_code/Random-Processes-Project/synthetic_aid_dat_2.csv
+Total mutations across dataset: 928
+Total fire events: 1152
+Total bound positions (state=1): 37810
+Avg mutations per sequence: 9.2800
+(base) dani@h115 Random-Processes-Project % 
