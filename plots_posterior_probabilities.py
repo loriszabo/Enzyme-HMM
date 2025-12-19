@@ -1,0 +1,419 @@
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+from typing import List, Optional, Sequence, Tuple
+
+import numpy as np
+import pandas as pd
+from scipy.special import logsumexp
+
+# ...existing code...
+
+@dataclass(frozen=True)
+class EvalSummary:
+    threshold: float
+    tp: int
+    fp: int
+    fn: int
+    tn: int
+    precision: float
+    recall: float
+    f1: float
+    roc_auc: float
+    pr_auc: float
+
+
+def _safe_div(num: float, den: float) -> float:
+    return float(num / den) if den != 0.0 else float("nan")
+
+
+def _confusion_from_threshold(post: np.ndarray, y_true: np.ndarray, threshold: float) -> Tuple[int, int, int, int]:
+    """
+    post: posterior P(state=1|data), shape (N,)
+    y_true: true state in {0,1}, shape (N,)
+    """
+    pred = post >= float(threshold)
+    y = y_true.astype(int)
+
+    tp = int(np.sum(pred & (y == 1)))
+    fp = int(np.sum(pred & (y == 0)))
+    fn = int(np.sum((~pred) & (y == 1)))
+    tn = int(np.sum((~pred) & (y == 0)))
+    return tp, fp, fn, tn
+
+
+def _precision_recall_f1(tp: int, fp: int, fn: int) -> Tuple[float, float, float]:
+    precision = _safe_div(tp, tp + fp)
+    recall = _safe_div(tp, tp + fn)
+    f1 = _safe_div(2.0 * precision * recall, precision + recall) if np.isfinite(precision) and np.isfinite(recall) else float("nan")
+    return float(precision), float(recall), float(f1)
+
+
+def _auc_trapz(x: np.ndarray, y: np.ndarray) -> float:
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    m = np.isfinite(x) & np.isfinite(y)
+    if int(m.sum()) < 2:
+        return float("nan")
+    x2 = x[m]
+    y2 = y[m]
+    # Ensure increasing x
+    order = np.argsort(x2)
+    x2 = x2[order]
+    y2 = y2[order]
+    return float(np.trapz(y2, x2))
+
+
+def _choose_thresholds(scores: np.ndarray, max_points: int) -> np.ndarray:
+    scores = np.asarray(scores, dtype=float)
+    scores = scores[np.isfinite(scores)]
+    if scores.size == 0:
+        return np.array([np.inf, -np.inf], dtype=float)
+
+    uniq = np.unique(scores)
+    if uniq.size <= max_points:
+        core = np.sort(uniq)[::-1]  # descending
+    else:
+        # Quantile grid (descending) to keep runtime reasonable on large N
+        qs = np.linspace(0.0, 1.0, max_points)
+        core = np.unique(np.quantile(scores, qs))[::-1]
+
+    # Add endpoints so curves include (0,0) and (1,1)-like extremes
+    return np.concatenate(([np.inf], core, [-np.inf])).astype(float)
+
+
+def roc_curve_from_posteriors(
+    scores: np.ndarray, y_true: np.ndarray, *, max_points: int = 2000
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """
+    Returns (fpr, tpr, thresholds, auc)
+    """
+    y = y_true.astype(int)
+    P = int(np.sum(y == 1))
+    N = int(np.sum(y == 0))
+    if P == 0 or N == 0:
+        return (
+            np.array([0.0, 1.0]),
+            np.array([0.0, 1.0]),
+            np.array([np.inf, -np.inf]),
+            float("nan"),
+        )
+
+    thresholds = _choose_thresholds(scores, max_points=max_points)
+    tpr = np.empty_like(thresholds, dtype=float)
+    fpr = np.empty_like(thresholds, dtype=float)
+
+    for k, thr in enumerate(thresholds):
+        tp, fp, fn, tn = _confusion_from_threshold(scores, y, thr)
+        tpr[k] = _safe_div(tp, P)
+        fpr[k] = _safe_div(fp, N)
+
+    auc = _auc_trapz(fpr, tpr)
+    return fpr, tpr, thresholds, auc
+
+
+def pr_curve_from_posteriors(
+    scores: np.ndarray, y_true: np.ndarray, *, max_points: int = 2000
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """
+    Returns (recall, precision, thresholds, pr_auc)
+    """
+    y = y_true.astype(int)
+    P = int(np.sum(y == 1))
+    if P == 0:
+        return (
+            np.array([0.0, 1.0]),
+            np.array([1.0, 0.0]),
+            np.array([np.inf, -np.inf]),
+            float("nan"),
+        )
+
+    thresholds = _choose_thresholds(scores, max_points=max_points)
+    precision = np.empty_like(thresholds, dtype=float)
+    recall = np.empty_like(thresholds, dtype=float)
+
+    for k, thr in enumerate(thresholds):
+        tp, fp, fn, tn = _confusion_from_threshold(scores, y, thr)
+        p, r, _ = _precision_recall_f1(tp, fp, fn)
+        precision[k] = p
+        recall[k] = r
+
+    # PR AUC: integrate precision over recall
+    pr_auc = _auc_trapz(recall, precision)
+    return recall, precision, thresholds, pr_auc
+
+
+def evaluate_with_hidden_states(
+    occ_mat: np.ndarray,
+    true_state_mat: np.ndarray,
+    *,
+    threshold: float,
+    max_curve_points: int = 2000,
+    save_curves_csv: Optional[str] = None,
+) -> EvalSummary:
+    # Flatten valid positions
+    m = np.isfinite(occ_mat) & np.isfinite(true_state_mat)
+    scores = occ_mat[m].astype(float)
+    y_true = true_state_mat[m].astype(int)
+
+    tp, fp, fn, tn = _confusion_from_threshold(scores, y_true, threshold)
+    precision, recall, f1 = _precision_recall_f1(tp, fp, fn)
+
+    fpr, tpr, roc_thr, roc_auc = roc_curve_from_posteriors(scores, y_true, max_points=max_curve_points)
+    rec, prec, pr_thr, pr_auc = pr_curve_from_posteriors(scores, y_true, max_points=max_curve_points)
+
+    if save_curves_csv is not None:
+        # Save both curves in one file (simple, long format)
+        roc_df = pd.DataFrame(
+            {"curve": "ROC", "threshold": roc_thr, "x": fpr, "y": tpr}
+        ).rename(columns={"x": "fpr", "y": "tpr"})
+        pr_df = pd.DataFrame(
+            {"curve": "PR", "threshold": pr_thr, "x": rec, "y": prec}
+        ).rename(columns={"x": "recall", "y": "precision"})
+        out = pd.concat([roc_df, pr_df], axis=0, ignore_index=True)
+        out.to_csv(save_curves_csv, index=False)
+
+    return EvalSummary(
+        threshold=float(threshold),
+        tp=tp,
+        fp=fp,
+        fn=fn,
+        tn=tn,
+        precision=float(precision),
+        recall=float(recall),
+        f1=float(f1),
+        roc_auc=float(roc_auc),
+        pr_auc=float(pr_auc),
+    )
+
+
+def summarize_dataset(
+    df: pd.DataFrame,
+    params: np.ndarray,
+    noise: float,
+    *,
+    save_per_position_csv: Optional[str] = None,
+    threshold: Optional[float] = None,
+    max_curve_points: int = 2000,
+    save_curves_csv: Optional[str] = None,
+) -> Tuple[PosteriorSummary, Optional[EvalSummary]]:
+    model = AID_HMM_2StatePosterior(noise=noise)
+
+    # Handle variable lengths by padding with NaNs
+    seqs = list(df["original_seq"].astype(str).values)
+    muts = list(df["mutated_seq"].astype(str).values)
+    n = len(seqs)
+    maxT = max(len(s) for s in seqs)
+
+    occ_mat = np.full((n, maxT), np.nan, dtype=float)       # posterior occupancy P(state=1)
+    mut_any = np.full((n, maxT), np.nan, dtype=float)       # indicator obs != orig
+    mut_ct = np.full((n, maxT), np.nan, dtype=float)        # indicator C->T
+    hotspot_mask = np.full((n, maxT), False, dtype=bool)
+
+    has_hidden = "hidden_states" in df.columns
+    true_state_mat = np.full((n, maxT), np.nan, dtype=float) if has_hidden else None
+
+    lls: List[float] = []
+
+    for i in range(n):
+        orig = seqs[i]
+        mut = muts[i]
+        T = len(orig)
+
+        gamma, ll = model.forward_backward_posteriors(orig, mut, tuple(map(float, params)))
+        lls.append(ll)
+
+        occ_mat[i, :T] = gamma[:, 1]
+        if has_hidden and true_state_mat is not None:
+            hs = str(df.loc[df.index[i], "hidden_states"])
+            if len(hs) != T:
+                raise ValueError(f"Row {i}: hidden_states length ({len(hs)}) != sequence length ({T})")
+            true_state_mat[i, :T] = np.fromiter((1.0 if c == "1" else 0.0 for c in hs), dtype=float, count=T)
+
+        for t in range(T):
+            mut_any[i, t] = 1.0 if mut[t] != orig[t] else 0.0
+            mut_ct[i, t] = 1.0 if (orig[t] == "C" and mut[t] == "T") else 0.0
+            hotspot_mask[i, t] = model.is_hotspot_WRC(orig, t)
+
+    # Mean posterior occupancy
+    mean_occ_per_seq = np.nanmean(occ_mat, axis=1)
+    mean_occ_overall = float(np.nanmean(mean_occ_per_seq))
+    mean_occ_per_pos = np.nanmean(occ_mat, axis=0)
+
+    # Mutation density
+    mut_rate_per_seq_any = np.nanmean(mut_any, axis=1)
+    mut_rate_per_seq_ct = np.nanmean(mut_ct, axis=1)
+    mut_rate_per_pos_any = np.nanmean(mut_any, axis=0)
+    mut_rate_per_pos_ct = np.nanmean(mut_ct, axis=0)
+
+    # Correlations
+    corr_seq_any = _pearson_corr(mean_occ_per_seq, mut_rate_per_seq_any)
+    corr_seq_ct = _pearson_corr(mean_occ_per_seq, mut_rate_per_seq_ct)
+    corr_pos_any = _pearson_corr(mean_occ_per_pos, mut_rate_per_pos_any)
+    corr_pos_ct = _pearson_corr(mean_occ_per_pos, mut_rate_per_pos_ct)
+
+    # Enrichment at hotspots
+    occ_hot = float(np.nanmean(occ_mat[hotspot_mask])) if np.any(hotspot_mask) else float("nan")
+    occ_nonhot = float(np.nanmean(occ_mat[~hotspot_mask])) if np.any(~hotspot_mask) else float("nan")
+    fold = float(occ_hot / occ_nonhot) if np.isfinite(occ_hot) and np.isfinite(occ_nonhot) and occ_nonhot > 0 else float("nan")
+    diff = float(occ_hot - occ_nonhot) if np.isfinite(occ_hot) and np.isfinite(occ_nonhot) else float("nan")
+
+    if save_per_position_csv is not None:
+        out = pd.DataFrame(
+            {
+                "pos": np.arange(maxT, dtype=int),
+                "mean_posterior_occupancy": mean_occ_per_pos,
+                "mutation_rate_any": mut_rate_per_pos_any,
+                "mutation_rate_CtoT": mut_rate_per_pos_ct,
+            }
+        )
+        out.to_csv(save_per_position_csv, index=False)
+
+    posterior_summary = PosteriorSummary(
+        mean_occ_overall=mean_occ_overall,
+        mean_occ_per_seq=mean_occ_per_seq,
+        mean_occ_per_pos=mean_occ_per_pos,
+        mut_rate_per_seq_any=mut_rate_per_seq_any,
+        mut_rate_per_seq_ct=mut_rate_per_seq_ct,
+        mut_rate_per_pos_any=mut_rate_per_pos_any,
+        mut_rate_per_pos_ct=mut_rate_per_pos_ct,
+        corr_seq_occ_vs_mut_any=corr_seq_any,
+        corr_seq_occ_vs_mut_ct=corr_seq_ct,
+        corr_pos_occ_vs_mut_any=corr_pos_any,
+        corr_pos_occ_vs_mut_ct=corr_pos_ct,
+        occ_hotspots=occ_hot,
+        occ_nonhotspots=occ_nonhot,
+        occ_enrichment_fold=fold,
+        occ_enrichment_diff=diff,
+    )
+
+    eval_summary: Optional[EvalSummary] = None
+    if has_hidden and true_state_mat is not None and threshold is not None:
+        eval_summary = evaluate_with_hidden_states(
+            occ_mat,
+            true_state_mat,
+            threshold=float(threshold),
+            max_curve_points=int(max_curve_points),
+            save_curves_csv=save_curves_csv,
+        )
+
+    return posterior_summary, eval_summary
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Posterior state probabilities (forward–backward) and uncertainty reporting for AID binding."
+    )
+    parser.add_argument("input", nargs="?", default=DEFAULT_INPUT_FILE, help="CSV with original_seq, mutated_seq")
+    parser.add_argument(
+        "--params",
+        type=str,
+        default=DEFAULT_PARAMS,
+        help=f"Comma-separated params: {', '.join(PARAM_NAMES)}",
+    )
+    parser.add_argument("--noise", type=float, default=NOISE, help="Fixed sequencing noise used in state 0")
+    parser.add_argument(
+        "--save-per-position",
+        type=str,
+        default=None,
+        help="Optional CSV output with per-position mean occupancy and mutation densities",
+    )
+
+    # --- NEW: synthetic-data evaluation ---
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Classification threshold on posterior P(state=1|data) for TP/FP/FN/TN and F1 (requires hidden_states).",
+    )
+    parser.add_argument(
+        "--save-curves",
+        type=str,
+        default=None,
+        help="Optional CSV output with ROC and PR curves (requires hidden_states).",
+    )
+    parser.add_argument(
+        "--max-curve-points",
+        type=int,
+        default=2000,
+        help="Max number of thresholds used to build ROC/PR curves (subsamples if needed).",
+    )
+
+    args = parser.parse_args()
+
+    df = pd.read_csv(args.input)
+    if "original_seq" not in df.columns or "mutated_seq" not in df.columns:
+        raise ValueError("CSV must contain columns: original_seq, mutated_seq")
+
+    params = _parse_params(args.params)
+
+    t0 = time.time()  # type: ignore[name-defined]
+    summary, eval_summary = summarize_dataset(
+        df,
+        params=params,
+        noise=float(args.noise),
+        save_per_position_csv=args.save_per_position,
+        threshold=float(args.threshold) if ("hidden_states" in df.columns) else None,
+        max_curve_points=int(args.max_curve_points),
+        save_curves_csv=args.save_curves,
+    )
+    dt = time.time() - t0  # type: ignore[name-defined]
+
+    # Required measurements to report
+    print("--- Posterior AID binding uncertainty via forward–backward ---")
+    print(f"Input: {args.input}")
+    print(f"Sequences: {len(df)}")
+    print(f"Params: {args.params}")
+    print(f"Noise (fixed): {args.noise}")
+    print(f"Runtime: {dt:.2f}s")
+
+    print("\nMean posterior occupancy (state=bound):")
+    print(f"  Overall mean occupancy: {summary.mean_occ_overall:.6f}")
+    print(f"  Across-sequence mean (mean of per-seq means): {float(np.nanmean(summary.mean_occ_per_seq)):.6f}")
+
+    print("\nVariance across sequences:")
+    print(f"  Var(per-seq mean occupancy): {float(np.nanvar(summary.mean_occ_per_seq, ddof=1)) if len(summary.mean_occ_per_seq)>1 else 0.0:.6g}")
+    print(f"  Std(per-seq mean occupancy): {float(np.nanstd(summary.mean_occ_per_seq, ddof=1)) if len(summary.mean_occ_per_seq)>1 else 0.0:.6g}")
+    qs = np.nanquantile(summary.mean_occ_per_seq, [0.05, 0.5, 0.95]) if len(summary.mean_occ_per_seq) > 0 else [np.nan, np.nan, np.nan]
+    print(f"  Quantiles (5%, 50%, 95%): {qs[0]:.6g}, {qs[1]:.6g}, {qs[2]:.6g}")
+
+    print("\nCorrelation with mutation density:")
+    print("  (Two definitions: any base change; and C->T only)")
+    print(f"  Per-sequence corr(mean occupancy, mutation density any):  {summary.corr_seq_occ_vs_mut_any:.4f}")
+    print(f"  Per-sequence corr(mean occupancy, mutation density C->T): {summary.corr_seq_occ_vs_mut_ct:.4f}")
+    print(f"  Per-position corr(mean occupancy, mutation rate any):     {summary.corr_pos_occ_vs_mut_any:.4f}")
+    print(f"  Per-position corr(mean occupancy, mutation rate C->T):    {summary.corr_pos_occ_vs_mut_ct:.4f}")
+
+    print("\nEnrichment at hotspots (WRC, posterior occupancy):")
+    print(f"  Mean occupancy at hotspots:     {summary.occ_hotspots:.6f}")
+    print(f"  Mean occupancy at non-hotspots: {summary.occ_nonhotspots:.6f}")
+    print(f"  Fold enrichment (hot/nonhot):   {summary.occ_enrichment_fold:.6g}")
+    print(f"  Difference (hot - nonhot):      {summary.occ_enrichment_diff:.6g}")
+
+    # --- NEW: synthetic evaluation report ---
+    if eval_summary is None and ("hidden_states" in df.columns):
+        print("\nSynthetic evaluation: hidden_states found, but evaluation was not run (threshold was None).")
+    elif eval_summary is None:
+        print("\nSynthetic evaluation: skipped (no hidden_states column in CSV).")
+    else:
+        print("\n--- Synthetic evaluation vs hidden_states ---")
+        print(f"Threshold: {eval_summary.threshold:.3f}")
+        print(f"TP={eval_summary.tp}  FP={eval_summary.fp}  FN={eval_summary.fn}  TN={eval_summary.tn}")
+        print(f"Precision: {eval_summary.precision:.6f}")
+        print(f"Recall:    {eval_summary.recall:.6f}")
+        print(f"F1:        {eval_summary.f1:.6f}")
+        print(f"ROC AUC:   {eval_summary.roc_auc:.6f}")
+        print(f"PR AUC:    {eval_summary.pr_auc:.6f}")
+        if args.save_curves is not None:
+            print(f"Saved ROC/PR curves to: {args.save_curves}")
+
+    if args.save_per_position is not None:
+        print(f"\nSaved per-position summary to: {args.save_per_position}")
+
+
+if __name__ == "__main__":
+    # Local import to avoid forcing time in module import paths elsewhere.
+    import time
+
+    main()

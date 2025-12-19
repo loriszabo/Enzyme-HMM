@@ -4,9 +4,8 @@ from scipy.optimize import minimize
 import sys
 import time
 
-#Test
 
-INPUT_FILE = "synthetic_aid_data.csv"
+INPUT_FILE = "synthetic_aid_data_2.csv"
 
 noise = 0.0001 # sequencing error is known normally, so we can just assume it given
 

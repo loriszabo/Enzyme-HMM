@@ -1,0 +1,2 @@
+- Use generate_snythetic_data_2.py to generate synthetic data
+- inference_2.py and inference_with_evaluation.py serve as recovering the model parameters using likelihood maximization (forward). At the core both scripts do the same, inference_with_evaluation.py is an extended version with evaluation metrics for the project report
