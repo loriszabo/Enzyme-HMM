@@ -412,8 +412,14 @@ def main() -> None:
 
     model = AID_HMM_2State(noise=NOISE)
 
-    # params = (alpha_recruit, lambda_scan, base_activation, hotspot_bias, coldspot_bias, mutation_eff)
-    base_x0 = np.array([0.03, 0.95, 0.04, 10.0, 0.1, 0.8], dtype=float)
+    # --- CHANGED SECTION STARTS HERE ---
+    
+    # 1. We remove the hardcoded "cheating" values.
+    # Instead, we define a neutral "center" for the random sampler to jitter around,
+    # or purely rely on uniform sampling within bounds.
+    # Here is a neutral starting guess (NOT the truth):
+    # recruit=0.1, scan=0.5 (neutral), activation=0.01, biases=1.0 (no bias), eff=0.5
+    neutral_x0 = np.array([0.1, 0.5, 0.01, 1.0, 1.0, 0.5], dtype=float)
 
     bounds: List[Tuple[float, float]] = [
         (1e-6, 1.0 - 1e-6),  # alpha_recruit
@@ -424,21 +430,26 @@ def main() -> None:
         (0.0, 1.0),          # mutation_eff
     ]
 
-    # True params (synthetic recovery)
+    # True params (only used for reporting error, NOT for initialization)
     true_x = _parse_true_params(args.true_params)
     if true_x is None:
         true_x = _extract_true_params_from_df(df)
 
     rng = np.random.default_rng(int(args.seed))
 
-    # Build initializations: include provided base_x0 + random restarts
-    x0_list: List[np.ndarray] = [base_x0]
-    for _ in range(max(0, int(args.restarts) - 1)):
-        x0_list.append(_sample_x0(rng, bounds, base_x0))
+    # 2. Build totally random initializations
+    # We loop 'args.restarts' times and generate a random sample for every single one.
+    x0_list: List[np.ndarray] = []
+    for _ in range(max(1, int(args.restarts))):
+        x0_list.append(_sample_x0(rng, bounds, neutral_x0))
+        
+    # --- CHANGED SECTION ENDS HERE ---
 
     t0 = time.time()
     fits: List[FitReport] = []
-    for x0 in x0_list:
+    for i, x0 in enumerate(x0_list):
+        # Optional: Print where we are starting from to verify randomness
+        # print(f"Restart {i+1}/{len(x0_list)} starting at: {x0}")
         fits.append(_fit_once(model, df, x0=x0, bounds=bounds, maxiter=args.maxiter))
     dt = time.time() - t0
 
