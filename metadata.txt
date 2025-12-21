@@ -11,82 +11,14 @@ Avg mutations per sequence: 9.2800
 
 ---------------------------------
 
-(base) dani@h115 Random-Processes-Project % python inference_2.py
-Test message.
---- 2-state AID HMM inference (consistent with generate_synthetic_data_2.py) ---
-Input: synthetic_aid_data_2.csv
-Sequences: 100
-Noise (fixed): 0.0001
-Optimization time: 1242.96s
-Success: True | Status: 0
-Message: CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
-Neg log-likelihood: 3219.860552
-  alpha_recruit = 0.037806
-    lambda_scan = 0.938105
-base_activation = 0.044351
-   hotspot_bias = 9.329096
-  coldspot_bias = 0.072519
-   mutation_eff = 0.782644
-
-----------------------------
-
-(base) dani@h115 Random-Processes-Project % python inference_with_evaluation.py
-Optimize:   0%|        | 1/                                        Optimize:   1%|       | 7/5                     Optimize:   5%|▌         |                                         Optimize:   0%| | 1/500 [02                                        Optimize:   3%|▌                                                   Optimize:   3%| | 17/500 [1                                        Optimize:   5%| | 24/500 [2                
-
- --- 2-state AID HMM inference (required reporting) ---             
-Input: synthetic_aid_data_2.csv
-Sequences: 100
-Total bases: 100000
-Noise (fixed): 0.0001
-Restarts: 3 | Seed: 0
-Optimization time (all restarts): 5729.75s
-
-Final likelihood:
-  Log-likelihood (LL): -3219.860552
-  Negative log-likelihood (NLL): 3219.860552
-  LL per sequence: -32.198606 | NLL per sequence: 32.198606
-  LL per base:     -0.032199 | NLL per base:     0.032199
-
-Convergence diagnostics (best restart):
-  Success: True | Status: 0
-  Message: CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
-  Iterations (nit): 34 | Func evals (nfev): 287 | Grad evals (njev): 41
-
-Parameter estimates:
-    alpha_recruit = 0.0378061 | true=0.03 | abs_err=0.00781 | rel_err=0.26
-      lambda_scan = 0.938105 | true=0.95 | abs_err=-0.0119 | rel_err=-0.0125
-  base_activation = 0.0443509 | true=0.04 | abs_err=0.00435 | rel_err=0.109
-     hotspot_bias = 9.3291 | true=10 | abs_err=-0.671 | rel_err=-0.0671
-    coldspot_bias = 0.0725186 | true=0.1 | abs_err=-0.0275 | rel_err=-0.275
-     mutation_eff = 0.782644 | true=0.8 | abs_err=-0.0174 | rel_err=-0.0217
-
-Stability across initializations:
-  Successful fits: 3/3
-  NLL across restarts: min=3219.860552, median=3241.637238, max=3740.478812, std=294.494061
-  Parameter stability (top 1/3 restarts by NLL):
-      alpha_recruit: mean=0.0378061, std=0
-        lambda_scan: mean=0.938105, std=0
-    base_activation: mean=0.0443509, std=0
-       hotspot_bias: mean=9.3291, std=0
-      coldspot_bias: mean=0.0725186, std=0
-       mutation_eff: mean=0.782644, std=0
-
-Synthetic recovery (if applicable):
-  MAE=0.123299 | RMSE=0.274284
-
-Top restarts by NLL:
-  #1: NLL=3219.860552 | success=True | nit=34 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
-  #2: NLL=3241.637238 | success=True | nit=47 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
-  #3: NLL=3740.478812 | success=True | nit=33 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
-
-
-(base) dani@h115 Random-Processes-Project % python posterior_state_probabilities.py
+(base) dani@h115 Random-Processes-Project % python ./posterior_state_probabi
+lities.py
 --- Posterior AID binding uncertainty via forward–backward ---
 Input: synthetic_aid_data_2.csv
 Sequences: 100
 Params: 0.03,0.95,0.04,10.0,0.1,0.8
 Noise (fixed): 0.0001
-Runtime: 10.61s
+Runtime: 11.83s
 
 Mean posterior occupancy (state=bound):
   Overall mean occupancy: 0.375623
@@ -119,3 +51,33 @@ F1:        0.510810
 ROC AUC:   0.717918
 PR AUC:    0.667680
 Saved ROC/PR curves to: curves_roc_pr.csv
+
+Saved per-position summary to: per_position_mean_occupancy_and_mutation_densities.csv
+
+---------------------------------
+
+(base) dani@h115 Random-Processes-Project % python viterby_algorithm_and_plot_2.py
+
+Sequence #3 metrics (vs true hidden_states):
+  Viterbi:   acc=0.6790 | prec=0.3874 rec=0.1453 f1=0.2113 | Dice=0.2113 | mean-best-IoU=0.1345
+  Posterior: acc=0.7040 | prec=0.5000 rec=0.1216 f1=0.1957 | Dice=0.1957 | mean-best-IoU=0.4842
+  Saved: plots_viterbi_posterior/sequence_003_comparison.png
+
+--- Dataset-level comparison (vs hidden_states) ---
+Sequences used: 100 | Length: 1000 | Threshold: 0.50 | Noise: 0.0001
+
+Position-level classification (bound=1):
+  Viterbi:   acc=0.644680 | prec=0.537878 rec=0.427770 f1=0.476547 | TP=16174 FP=13896 FN=21636 TN=48294
+  Posterior: acc=0.716030 | prec=0.732546 rec=0.392118 f1=0.510810 | TP=14826 FP=5413 FN=22984 TN=56777
+
+Segment/overlap metrics (per-sequence):
+  mean best IoU:  Viterbi mean=0.256838 | Posterior mean=0.508458
+  Dice (pos):     Viterbi mean=0.436627 | Posterior mean=0.497633
+
+Posterior-only (soft) calibration-ish metric:
+  Brier score (posterior P1 vs true): 0.193438
+
+Saved plots:
+  plots_viterbi_posterior/per_position_accuracy.png
+  plots_viterbi_posterior/segment_iou_hist.png
+  plots_viterbi_posterior/dice_hist.png

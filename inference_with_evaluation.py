@@ -421,7 +421,7 @@ def main() -> None:
         default=DEFAULT_PARAM_VALUES,
         help=f"Comma-separated true params in order: {', '.join(PARAM_NAMES)} (for synthetic recovery)",
     )
-    parser.add_argument("--report-per-seq", action="store_true", help="Print per-sequence LL summary stats")
+    parser.add_argument("--report-per-seq", action="store_true", default=True, help="Print per-sequence LL summary stats")
     parser.add_argument("--hessian", action="store_true", default=True, help="Compute numerical Hessian at best fit (identifiability check)")
     args = parser.parse_args()
 

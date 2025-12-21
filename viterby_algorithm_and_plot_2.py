@@ -14,7 +14,7 @@ DEFAULT_DATA_FILE = "synthetic_aid_data_2.csv"
 DEFAULT_NOISE = 1e-4
 
 # Default inferred params (override with --params)
-DEFAULT_PARAMS = "0.037806,0.938105,0.044351,9.329096,0.072519,0.782644"
+DEFAULT_PARAMS = "0.03,0.95,0.04,10.0,0.1,0.8"
 PARAM_NAMES = [
     "alpha_recruit",
     "lambda_scan",
@@ -472,7 +472,6 @@ def compute_dataset_level_curves_and_plots(
 
     print("\nSaved plots:")
     print(f"  {p1}")
-    print(f"  {p2}")
     print(f"  {os.path.join(out_dir, 'segment_iou_hist.png')}")
     print(f"  {os.path.join(out_dir, 'dice_hist.png')}")
 
