@@ -316,17 +316,25 @@ def _fit_once(
     progress: bool = True,
     desc: str = "Optimize",
 ) -> FitReport:
+    it_ct = 0
     def objective(x: np.ndarray) -> float:
         val = model.dataset_neg_loglik(df, tuple(map(float, x)))
-        print(f"Iter: {x}")
-        return val 
+        return val
 
     pbar = None
 
-    def callback(_xk: np.ndarray) -> None:
+    def callback(xk: np.ndarray) -> None:
         # L-BFGS-B calls callback once per iteration (not per function eval).
+        nonlocal it_ct
+        it_ct += 1
+    
         if pbar is not None:
             pbar.update(1)
+        
+        if (it_ct % 25 == 0):
+            # prints once per optimizer iteration
+            print(f"iter={it_ct:4d}  x={np.array2string(xk, precision=4, separator=',')}")
+
 
     try:
         pbar = tqdm(
@@ -449,7 +457,7 @@ def main() -> None:
     fits: List[FitReport] = []
     for i, x0 in enumerate(x0_list):
         # Optional: Print where we are starting from to verify randomness
-        # print(f"Restart {i+1}/{len(x0_list)} starting at: {x0}")
+        print(f"Restart {i+1}/{len(x0_list)} starting at: {x0}")
         fits.append(_fit_once(model, df, x0=x0, bounds=bounds, maxiter=args.maxiter))
     dt = time.time() - t0
 
