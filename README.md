@@ -1,2 +1,4 @@
 - Use generate_snythetic_data_2.py to generate synthetic data
-- inference_2.py and inference_with_evaluation.py serve as recovering the model parameters using likelihood maximization (forward). At the core both scripts do the same, inference_with_evaluation.py is an extended version with evaluation metrics for the project report
+- inference_2.py and inference_with_evaluation.py serve as recovering the model parameters using likelihood maximization (forward). At the core both scripts do the same, inference_with_evaluation.py is an extended version with evaluation metrics for the project repor
+- posterior_state_probabilites.py is the file for calcualating the posterior probabilities for the hidden states
+- plots_posterior_probabilites.py creates nice plots
