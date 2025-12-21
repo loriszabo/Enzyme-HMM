@@ -11,6 +11,62 @@ Avg mutations per sequence: 9.2800
 
 ---------------------------------
 
+--- 2-state AID HMM inference (required reporting) ---           
+Input: synthetic_aid_data_2.csv
+Sequences: 100
+Total bases: 100000
+Noise (fixed): 0.0001
+Restarts: 5 | Seed: 0
+Optimization time (all restarts): 15275.00s
+
+Final likelihood:
+  Log-likelihood (LL): -3219.860552
+  Negative log-likelihood (NLL): 3219.860552
+  LL per sequence: -32.198606 | NLL per sequence: 32.198606
+  LL per base:     -0.032199 | NLL per base:     0.032199
+
+Convergence diagnostics (best restart):
+  Success: True | Status: 0
+  Message: CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
+  Iterations (nit): 37 | Func evals (nfev): 364 | Grad evals (njev): 52
+
+Parameter estimates:
+    alpha_recruit = 0.0378072 | true=0.03 | abs_err=0.00781 | rel_err=0.26
+      lambda_scan = 0.938108 | true=0.95 | abs_err=-0.0119 | rel_err=-0.0125
+  base_activation = 0.107191 | true=0.04 | abs_err=0.0672 | rel_err=1.68
+     hotspot_bias = 70.6483 | true=10 | abs_err=60.6 | rel_err=6.06
+    coldspot_bias = 0.0725148 | true=0.1 | abs_err=-0.0275 | rel_err=-0.275
+     mutation_eff = 0.323811 | true=0.8 | abs_err=-0.476 | rel_err=-0.595
+
+Stability across initializations:
+  Successful fits: 5/5
+  NLL across restarts: min=3219.860552, median=3740.478812, max=3789.025077, std=242.997360
+  Parameter stability (top 2/5 restarts by NLL):
+      alpha_recruit: mean=0.0362691, std=0.00218
+        lambda_scan: mean=0.946286, std=0.0116
+    base_activation: mean=0.160094, std=0.0748
+       hotspot_bias: mean=64.0823, std=9.29
+      coldspot_bias: mean=13.2327, std=18.6
+       mutation_eff: mean=0.234773, std=0.126
+
+Identifiability checks (numerical Hessian at best fit):
+  Hessian eigenvalues: min=-3.02e-13, max=3.44e+05, condition~inf
+  Warning: Hessian not positive definite (local non-identifiability or numerical issues).
+
+Synthetic recovery (if applicable):
+  MAE=10.2065 | RMSE=24.7603
+
+Top restarts by NLL:
+  #1: NLL=3219.860552 | success=True | nit=37 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
+  #2: NLL=3740.478812 | success=True | nit=37 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
+  #3: NLL=3740.478812 | success=True | nit=25 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
+  #4: NLL=3774.545279 | success=True | nit=44 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
+  #5: NLL=3789.025077 | success=True | nit=31 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
+
+
+
+----------------------------------
+
 (base) dani@h115 Random-Processes-Project % python ./posterior_state_probabi
 lities.py
 --- Posterior AID binding uncertainty via forward–backward ---
