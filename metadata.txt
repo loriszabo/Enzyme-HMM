@@ -78,3 +78,44 @@ Top restarts by NLL:
   #1: NLL=3219.860552 | success=True | nit=34 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
   #2: NLL=3241.637238 | success=True | nit=47 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
   #3: NLL=3740.478812 | success=True | nit=33 | msg=CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH
+
+
+(base) dani@h115 Random-Processes-Project % python posterior_state_probabilities.py
+--- Posterior AID binding uncertainty via forward–backward ---
+Input: synthetic_aid_data_2.csv
+Sequences: 100
+Params: 0.03,0.95,0.04,10.0,0.1,0.8
+Noise (fixed): 0.0001
+Runtime: 10.61s
+
+Mean posterior occupancy (state=bound):
+  Overall mean occupancy: 0.375623
+  Across-sequence mean (mean of per-seq means): 0.375623
+
+Variance across sequences:
+  Var(per-seq mean occupancy): 0.00203037
+  Std(per-seq mean occupancy): 0.0450597
+  Quantiles (5%, 50%, 95%): 0.305877, 0.373213, 0.458141
+
+Correlation with mutation density:
+  (Two definitions: any base change; and C->T only)
+  Per-sequence corr(mean occupancy, mutation density any):  0.9348
+  Per-sequence corr(mean occupancy, mutation density C->T): 0.9374
+  Per-position corr(mean occupancy, mutation rate any):     0.2274
+  Per-position corr(mean occupancy, mutation rate C->T):    0.2265
+
+Enrichment at hotspots (WRC, posterior occupancy):
+  Mean occupancy at hotspots:     0.377324
+  Mean occupancy at non-hotspots: 0.375511
+  Fold enrichment (hot/nonhot):   1.00483
+  Difference (hot - nonhot):      0.0018128
+
+--- Synthetic evaluation vs hidden_states ---
+Threshold: 0.500
+TP=14826  FP=5413  FN=22984  TN=56777
+Precision: 0.732546
+Recall:    0.392118
+F1:        0.510810
+ROC AUC:   0.717918
+PR AUC:    0.667680
+Saved ROC/PR curves to: curves_roc_pr.csv
