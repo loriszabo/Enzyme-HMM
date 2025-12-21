@@ -528,9 +528,29 @@ def main() -> None:
     parser.add_argument(
         "--save-per-position",
         type=str,
-        default=None,
+        default="per_position_mean_occupancy_and_mutation_densities.csv",
         help="Optional CSV output with per-position mean occupancy and mutation densities",
     )
+
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Classification threshold on posterior P(state=1|data) for TP/FP/FN/TN and F1 (requires hidden_states).",
+    )
+    parser.add_argument(
+        "--save-curves",
+        type=str,
+        default="curves_roc_pr.csv",
+        help="Optional CSV output with ROC and PR curves (requires hidden_states).",
+    )
+    parser.add_argument(
+        "--max-curve-points",
+        type=int,
+        default=2000,
+        help="Max number of thresholds used to build ROC/PR curves (subsamples if needed).",
+    )
+
     args = parser.parse_args()
 
     df = pd.read_csv(args.input)
@@ -540,7 +560,15 @@ def main() -> None:
     params = _parse_params(args.params)
 
     t0 = time.time()  # type: ignore[name-defined]
-    summary = summarize_dataset(df, params=params, noise=float(args.noise), save_per_position_csv=args.save_per_position)
+    summary, eval_summary = summarize_dataset(
+        df,
+        params=params,
+        noise=float(args.noise),
+        save_per_position_csv=args.save_per_position,
+        threshold=float(args.threshold) if ("hidden_states" in df.columns) else None,
+        max_curve_points=int(args.max_curve_points),
+        save_curves_csv=args.save_curves,
+    )
     dt = time.time() - t0  # type: ignore[name-defined]
 
     # Required measurements to report
@@ -573,6 +601,22 @@ def main() -> None:
     print(f"  Mean occupancy at non-hotspots: {summary.occ_nonhotspots:.6f}")
     print(f"  Fold enrichment (hot/nonhot):   {summary.occ_enrichment_fold:.6g}")
     print(f"  Difference (hot - nonhot):      {summary.occ_enrichment_diff:.6g}")
+
+    if eval_summary is None and ("hidden_states" in df.columns):
+        print("\nSynthetic evaluation: hidden_states found, but evaluation was not run (threshold was None).")
+    elif eval_summary is None:
+        print("\nSynthetic evaluation: skipped (no hidden_states column in CSV).")
+    else:
+        print("\n--- Synthetic evaluation vs hidden_states ---")
+        print(f"Threshold: {eval_summary.threshold:.3f}")
+        print(f"TP={eval_summary.tp}  FP={eval_summary.fp}  FN={eval_summary.fn}  TN={eval_summary.tn}")
+        print(f"Precision: {eval_summary.precision:.6f}")
+        print(f"Recall:    {eval_summary.recall:.6f}")
+        print(f"F1:        {eval_summary.f1:.6f}")
+        print(f"ROC AUC:   {eval_summary.roc_auc:.6f}")
+        print(f"PR AUC:    {eval_summary.pr_auc:.6f}")
+        if args.save_curves is not None:
+            print(f"Saved ROC/PR curves to: {args.save_curves}")
 
     if args.save_per_position is not None:
         print(f"\nSaved per-position summary to: {args.save_per_position}")
