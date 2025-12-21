@@ -479,7 +479,8 @@ def compute_dataset_level_curves_and_plots(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Viterbi vs posterior comparison: plots + accuracy/PR + segment overlap.")
     parser.add_argument("--data", type=str, default=DEFAULT_DATA_FILE, help="CSV file (synthetic_aid_data_2.csv)")
-    parser.add_argument("--sequence-index", type=int, default=3, help="Index of a sequence to plot (0-based).")
+    # in our data index 35 had the most mutationss
+    parser.add_argument("--sequence-index", type=int, default=35, help="Index of a sequence to plot (0-based).")
     parser.add_argument("--params", type=str, default=DEFAULT_PARAMS, help="Comma-separated params: alpha_recruit,lambda_scan,base_activation,hotspot_bias,coldspot_bias,mutation_eff")
     parser.add_argument("--noise", type=float, default=DEFAULT_NOISE, help="Fixed background noise (state 0).")
     parser.add_argument("--threshold", type=float, default=0.5, help="Posterior threshold for hard bound/unbound.")
