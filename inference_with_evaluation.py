@@ -331,7 +331,7 @@ def _fit_once(
         if pbar is not None:
             pbar.update(1)
         
-        if (it_ct % 25 == 0):
+        if (it_ct % 3 == 0):
             # prints once per optimizer iteration
             print(f"iter={it_ct:4d}  x={np.array2string(xk, precision=4, separator=',')}")
 
@@ -372,16 +372,29 @@ def _fit_once(
 
 
 def _sample_x0(rng: np.random.Generator, bounds: Sequence[Tuple[float, float]], base_x0: np.ndarray) -> np.ndarray:
-    # log-uniform for biases, uniform otherwise; jitter around base_x0 if provided.
-    x = np.array(base_x0, dtype=float)
+    # Scientifically legitimate sampling:
+    # - Biases (ratios) and small rates are scale parameters -> Log-Uniform distribution.
+    # - Efficiencies/Probabilities (0-1) -> Uniform distribution.
+    
+    x = np.zeros(len(bounds), dtype=float)
     for i, (lo, hi) in enumerate(bounds):
-        if PARAM_NAMES[i] in ("hotspot_bias", "coldspot_bias"):
-            lo2 = max(lo, 1e-12)
-            hi2 = max(hi, lo2 * 10.0)
-            u = rng.uniform(np.log(lo2), np.log(hi2))
-            x[i] = float(np.exp(u))
+        name = PARAM_NAMES[i]
+        
+        # Identify scale parameters (biases, small rates)
+        # alpha_recruit and base_activation are probabilities but typically small (1e-4 to 1e-1),
+        # so log-uniform sampling explores this range better than linear uniform.
+        is_scale_param = name in ("alpha_recruit", "base_activation", "hotspot_bias", "coldspot_bias")
+        
+        if is_scale_param:
+            # Log-Uniform sampling
+            # Ensure bounds are positive for log
+            safe_lo = max(lo, 1e-6) 
+            safe_hi = max(hi, safe_lo * 1.0001)
+            x[i] = np.exp(rng.uniform(np.log(safe_lo), np.log(safe_hi)))
         else:
-            x[i] = float(rng.uniform(lo, hi))
+            # Uniform sampling (lambda_scan, mutation_eff)
+            x[i] = rng.uniform(lo, hi)
+            
     return x
 
 
@@ -399,7 +412,7 @@ def _print_param_table(x: np.ndarray, true_x: Optional[np.ndarray] = None) -> No
 def main() -> None:
     parser = argparse.ArgumentParser(description="2-state AID HMM inference with reporting/diagnostics.")
     parser.add_argument("input", nargs="?", default=DEFAULT_INPUT_FILE, help="CSV with columns original_seq, mutated_seq")
-    parser.add_argument("--restarts", type=int, default=3, help="Number of random restarts (stability across initializations)")
+    parser.add_argument("--restarts", type=int, default=5, help="Number of random restarts (stability across initializations)")
     parser.add_argument("--seed", type=int, default=0, help="RNG seed for restarts")
     parser.add_argument("--maxiter", type=int, default=500, help="Optimizer max iterations per restart")
     parser.add_argument(
@@ -409,7 +422,7 @@ def main() -> None:
         help=f"Comma-separated true params in order: {', '.join(PARAM_NAMES)} (for synthetic recovery)",
     )
     parser.add_argument("--report-per-seq", action="store_true", help="Print per-sequence LL summary stats")
-    parser.add_argument("--hessian", action="store_true", help="Compute numerical Hessian at best fit (identifiability check)")
+    parser.add_argument("--hessian", action="store_true", default=True, help="Compute numerical Hessian at best fit (identifiability check)")
     args = parser.parse_args()
 
     input_file = args.input
@@ -420,21 +433,18 @@ def main() -> None:
 
     model = AID_HMM_2State(noise=NOISE)
 
-    # --- CHANGED SECTION STARTS HERE ---
-    
-    # 1. We remove the hardcoded "cheating" values.
-    # Instead, we define a neutral "center" for the random sampler to jitter around,
-    # or purely rely on uniform sampling within bounds.
-    # Here is a neutral starting guess (NOT the truth):
-    # recruit=0.1, scan=0.5 (neutral), activation=0.01, biases=1.0 (no bias), eff=0.5
-    neutral_x0 = np.array([0.1, 0.5, 0.01, 1.0, 1.0, 0.5], dtype=float)
+    # 1. Define a biologically plausible "neutral" starting point.
+    # This acts as a sane default for the first restart.
+    # recruit=0.05 (low), scan=0.5 (mid), activation=0.05 (low), biases=1.0 (neutral), eff=0.5 (mid)
+    neutral_x0 = np.array([0.05, 0.5, 0.05, 1.0, 1.0, 0.5], dtype=float)
 
+    # Bounds: Wide enough to cover the space, but physically constrained where obvious.
     bounds: List[Tuple[float, float]] = [
-        (1e-6, 1.0 - 1e-6),  # alpha_recruit
+        (1e-6, 0.5),         # alpha_recruit: unlikely to be > 0.5
         (1e-6, 1.0 - 1e-6),  # lambda_scan
-        (0.0, 1.0),          # base_activation
-        (1e-3, 200.0),       # hotspot_bias
-        (1e-3, 200.0),       # coldspot_bias
+        (1e-6, 0.5),         # base_activation: unlikely to be > 0.5
+        (1e-2, 100.0),       # hotspot_bias
+        (1e-2, 100.0),       # coldspot_bias
         (0.0, 1.0),          # mutation_eff
     ]
 
@@ -445,13 +455,17 @@ def main() -> None:
 
     rng = np.random.default_rng(int(args.seed))
 
-    # 2. Build totally random initializations
-    # We loop 'args.restarts' times and generate a random sample for every single one.
+    # 2. Build initializations
+    # Strategy: Always try the "neutral" biological guess first.
+    # Then add (restarts - 1) random samples from the broad priors.
     x0_list: List[np.ndarray] = []
-    for _ in range(max(1, int(args.restarts))):
+    
+    # First restart: Neutral guess
+    x0_list.append(neutral_x0)
+    
+    # Subsequent restarts: Random sampling from bounds
+    for _ in range(max(0, int(args.restarts) - 1)):
         x0_list.append(_sample_x0(rng, bounds, neutral_x0))
-        
-    # --- CHANGED SECTION ENDS HERE ---
 
     t0 = time.time()
     fits: List[FitReport] = []
