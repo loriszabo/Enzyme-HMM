@@ -317,7 +317,9 @@ def _fit_once(
     desc: str = "Optimize",
 ) -> FitReport:
     def objective(x: np.ndarray) -> float:
-        return model.dataset_neg_loglik(df, tuple(map(float, x)))
+        val = model.dataset_neg_loglik(df, tuple(map(float, x)))
+        print(f"Iter: {x}")
+        return val 
 
     pbar = None
 
