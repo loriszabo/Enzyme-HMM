@@ -189,8 +189,9 @@ def plot_per_position(
     m_any_s = _rolling_mean(m_any, smooth_window)
     m_ct_s = _rolling_mean(m_ct, smooth_window)
 
-    # Any-other-than-C->T = (any) - (C->T). Clamp for numerical/smoothing safety.
-    m_other_s = np.maximum(0.0, m_any_s - m_ct_s)
+    # Compute residual on raw rates first, then smooth (more interpretable residual).
+    m_other = np.maximum(0.0, m_any - m_ct)
+    m_other_s = _rolling_mean(m_other, smooth_window)
 
     # Optional: overlay truth + emissions from synthetic CSV
     mean_hidden_s = None
