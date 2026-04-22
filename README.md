@@ -1,3 +1,5 @@
+Abstract—Activation-Induced Cytidine Deaminase (AID) is the key enzyme in B-cell receptor maturation during adaptive immune response. Although its biological role is well established, its kinetic mechanisms remain mostly elusive. In this project, we propose a latent probabilistic modeling framework that treats AID activity as a hidden stochastic process along the B-cell receptor gene sequence. We model the enzyme using a Markovian model, with two enzyme activity states (bound/ unbound) for each base as hidden states, assuming observable mutations happen dependent on enzyme state, base state, and motif bias of enzyme activity. Using likelihood maximization, we estimate biologically interpretable parameters, calculate the posterior probabilities for enzyme states and use the Viterbi algorithm to reconstruct the most likely hidden enzyme activity path from observed mutation data. This project helps to better understand the probabilistic nature of AID dynamics during immune responses.
+
 Please refer to the project report for detailed context.
 
 - Use generate_snythetic_data_2.py to generate synthetic data
